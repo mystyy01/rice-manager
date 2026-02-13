@@ -2,6 +2,10 @@
 
 `rice` CLI for installing/switching Hyprland rice profiles, including optional Kitty and Waybar configs.
 
+## Preview
+
+![rice-manager preview](assets/preview.gif)
+
 ## Install (curl | bash)
 
 ```bash

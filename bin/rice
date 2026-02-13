@@ -5,6 +5,12 @@ RICE_ROOT="${RICE_ROOT:-$HOME/.local/share/rices}"
 TARGET_DIR="${RICE_TARGET:-$HOME/.config/hypr}"
 KITTY_TARGET_DIR="${RICE_KITTY_TARGET:-$HOME/.config/kitty}"
 WAYBAR_TARGET_DIR="${RICE_WAYBAR_TARGET:-$HOME/.config/waybar}"
+DOLPHIN_TARGET_DIR="${RICE_DOLPHIN_TARGET:-$HOME/.config/dolphin}"
+DOLPHINRC_TARGET="${RICE_DOLPHINRC_TARGET:-$HOME/.config/dolphinrc}"
+THUNAR_TARGET_DIR="${RICE_THUNAR_TARGET:-$HOME/.config/Thunar}"
+THUNARRC_TARGET="${RICE_THUNARRC_TARGET:-$HOME/.config/Thunar/thunarrc}"
+GTK3_CSS_TARGET="${RICE_GTK3_CSS_TARGET:-$HOME/.config/gtk-3.0/gtk.css}"
+GTK3_SETTINGS_TARGET="${RICE_GTK3_SETTINGS_TARGET:-$HOME/.config/gtk-3.0/settings.ini}"
 STATE_DIR="$RICE_ROOT/.state"
 CURRENT_FILE="$STATE_DIR/current"
 BACKUP_ROOT="${RICE_BACKUP_ROOT:-$HOME/.local/state/rice/backups}"
@@ -27,6 +33,13 @@ Storage:
   optional dirs per rice:
     kitty/   -> synced to $KITTY_TARGET_DIR
     waybar/  -> synced to $WAYBAR_TARGET_DIR
+    dolphin/ -> synced to $DOLPHIN_TARGET_DIR
+    thunar/  -> synced to $THUNAR_TARGET_DIR
+  optional files per rice:
+    dolphinrc -> synced to $DOLPHINRC_TARGET
+    thunarrc -> synced to $THUNARRC_TARGET
+    gtk3.css -> synced to $GTK3_CSS_TARGET
+    gtk3.settings.ini -> synced to $GTK3_SETTINGS_TARGET
 USAGE
 }
 
@@ -123,6 +136,40 @@ backup_current() {
     else
       cp -a "$WAYBAR_TARGET_DIR/." "$backup_dir/waybar/"
     fi
+  fi
+
+  if [[ -d "$DOLPHIN_TARGET_DIR" ]]; then
+    mkdir -p "$backup_dir/dolphin"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "$DOLPHIN_TARGET_DIR/" "$backup_dir/dolphin/"
+    else
+      cp -a "$DOLPHIN_TARGET_DIR/." "$backup_dir/dolphin/"
+    fi
+  fi
+
+  if [[ -f "$DOLPHINRC_TARGET" ]]; then
+    cp -a "$DOLPHINRC_TARGET" "$backup_dir/dolphinrc"
+  fi
+
+  if [[ -d "$THUNAR_TARGET_DIR" ]]; then
+    mkdir -p "$backup_dir/thunar"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "$THUNAR_TARGET_DIR/" "$backup_dir/thunar/"
+    else
+      cp -a "$THUNAR_TARGET_DIR/." "$backup_dir/thunar/"
+    fi
+  fi
+
+  if [[ -f "$THUNARRC_TARGET" ]]; then
+    cp -a "$THUNARRC_TARGET" "$backup_dir/thunarrc"
+  fi
+
+  if [[ -f "$GTK3_CSS_TARGET" ]]; then
+    cp -a "$GTK3_CSS_TARGET" "$backup_dir/gtk3.css"
+  fi
+
+  if [[ -f "$GTK3_SETTINGS_TARGET" ]]; then
+    cp -a "$GTK3_SETTINGS_TARGET" "$backup_dir/gtk3.settings.ini"
   fi
 }
 
@@ -240,6 +287,47 @@ switch_rice() {
     fi
   fi
 
+  if [[ -d "$src/dolphin" ]]; then
+    mkdir -p "$DOLPHIN_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/dolphin/" "$DOLPHIN_TARGET_DIR/"
+    else
+      rm -rf "$DOLPHIN_TARGET_DIR"
+      mkdir -p "$DOLPHIN_TARGET_DIR"
+      cp -a "$src/dolphin/." "$DOLPHIN_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -f "$src/dolphinrc" ]]; then
+    cp -a "$src/dolphinrc" "$DOLPHINRC_TARGET"
+  fi
+
+  if [[ -d "$src/thunar" ]]; then
+    mkdir -p "$THUNAR_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/thunar/" "$THUNAR_TARGET_DIR/"
+    else
+      rm -rf "$THUNAR_TARGET_DIR"
+      mkdir -p "$THUNAR_TARGET_DIR"
+      cp -a "$src/thunar/." "$THUNAR_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -f "$src/thunarrc" ]]; then
+    mkdir -p "$(dirname "$THUNARRC_TARGET")"
+    cp -a "$src/thunarrc" "$THUNARRC_TARGET"
+  fi
+
+  if [[ -f "$src/gtk3.css" ]]; then
+    mkdir -p "$(dirname "$GTK3_CSS_TARGET")"
+    cp -a "$src/gtk3.css" "$GTK3_CSS_TARGET"
+  fi
+
+  if [[ -f "$src/gtk3.settings.ini" ]]; then
+    mkdir -p "$(dirname "$GTK3_SETTINGS_TARGET")"
+    cp -a "$src/gtk3.settings.ini" "$GTK3_SETTINGS_TARGET"
+  fi
+
   echo "$name" > "$CURRENT_FILE"
   post_apply_refresh
   echo "Switched to rice '$name'"
@@ -320,6 +408,47 @@ restore_backup() {
       mkdir -p "$WAYBAR_TARGET_DIR"
       cp -a "$src/waybar/." "$WAYBAR_TARGET_DIR/"
     fi
+  fi
+
+  if [[ -d "$src/dolphin" ]]; then
+    mkdir -p "$DOLPHIN_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/dolphin/" "$DOLPHIN_TARGET_DIR/"
+    else
+      rm -rf "$DOLPHIN_TARGET_DIR"
+      mkdir -p "$DOLPHIN_TARGET_DIR"
+      cp -a "$src/dolphin/." "$DOLPHIN_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -f "$src/dolphinrc" ]]; then
+    cp -a "$src/dolphinrc" "$DOLPHINRC_TARGET"
+  fi
+
+  if [[ -d "$src/thunar" ]]; then
+    mkdir -p "$THUNAR_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/thunar/" "$THUNAR_TARGET_DIR/"
+    else
+      rm -rf "$THUNAR_TARGET_DIR"
+      mkdir -p "$THUNAR_TARGET_DIR"
+      cp -a "$src/thunar/." "$THUNAR_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -f "$src/thunarrc" ]]; then
+    mkdir -p "$(dirname "$THUNARRC_TARGET")"
+    cp -a "$src/thunarrc" "$THUNARRC_TARGET"
+  fi
+
+  if [[ -f "$src/gtk3.css" ]]; then
+    mkdir -p "$(dirname "$GTK3_CSS_TARGET")"
+    cp -a "$src/gtk3.css" "$GTK3_CSS_TARGET"
+  fi
+
+  if [[ -f "$src/gtk3.settings.ini" ]]; then
+    mkdir -p "$(dirname "$GTK3_SETTINGS_TARGET")"
+    cp -a "$src/gtk3.settings.ini" "$GTK3_SETTINGS_TARGET"
   fi
 
   post_apply_refresh
