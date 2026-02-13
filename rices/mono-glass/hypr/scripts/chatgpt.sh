@@ -1,0 +1,1 @@
+python -m webbrowser https://chatgpt.com/ 

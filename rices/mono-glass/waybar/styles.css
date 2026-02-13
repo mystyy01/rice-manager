@@ -1,0 +1,22 @@
+* {
+    font-family: "FiraCode Nerd Font", monospace;
+    font-size: 12px;
+    padding: 0 6px;
+    border-radius: 10px;
+}
+
+#workspaces, #clock, #pulseaudio, #battery, #network {
+    background: rgba(30, 30, 30, 0.7);
+    color: #ffffff;
+    margin: 2px;
+}
+
+#workspaces .active {
+    background: rgba(50, 150, 255, 0.7);
+    color: #fff;
+}
+
+#workspaces .occupied {
+    background: rgba(100, 100, 100, 0.4);
+    color: #ccc;
+}

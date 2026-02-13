@@ -1,0 +1,86 @@
+* {
+  font-family: JetBrainsMono Nerd Font;
+  font-size: 12px;
+}
+
+@define-color mg_bg rgba(10, 10, 10, 0.70);
+@define-color mg_bg_strong rgba(14, 14, 14, 0.88);
+@define-color mg_fg #f2f2f2;
+@define-color mg_muted #b7b7b7;
+@define-color mg_soft #8a8a8a;
+@define-color mg_line rgba(255, 255, 255, 0.16);
+
+window#waybar {
+  background: transparent;
+  color: @mg_fg;
+  margin: 8px 12px;
+}
+
+.modules-left,
+.modules-center,
+.modules-right {
+  background: linear-gradient(180deg, rgba(25, 25, 25, 0.65), @mg_bg);
+  border: 1px solid @mg_line;
+  border-radius: 999px;
+  padding: 5px 9px;
+}
+
+#workspaces,
+#window {
+  margin: 0 7px;
+}
+
+#workspaces button {
+  padding: 0 7px;
+  margin: 0 2px;
+  border: none;
+  box-shadow: inset 0 -3px transparent;
+  color: @mg_muted;
+  border-radius: 999px;
+}
+
+#workspaces button.active,
+#workspaces button.focused {
+  color: @mg_fg;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+#clock,
+#battery,
+#cpu,
+#memory,
+#temperature,
+#backlight,
+#network,
+#pulseaudio,
+#tray,
+#bluetooth,
+#custom-power-menu,
+#custom-launcher,
+#custom-hyprPicker,
+#custom-notifications,
+#custom-weather,
+#custom-media {
+  color: @mg_fg;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+#cpu,
+#memory,
+#temperature,
+#network,
+#bluetooth,
+#pulseaudio,
+#battery,
+#backlight {
+  background: @mg_bg_strong;
+}
+
+#network.disconnected,
+#bluetooth.disconnected,
+#battery.critical:not(.charging) {
+  color: #ffffff;
+  background: rgba(85, 85, 85, 0.95);
+}

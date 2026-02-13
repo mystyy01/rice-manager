@@ -1,0 +1,14 @@
+#!/bin/sh
+down() {
+  # Use one backend only; mixing brillo + brightnessctl can fight each other.
+  brillo -u 150000 -U 2
+}
+
+up() {
+  brillo -u 150000 -A 2
+}
+
+case "$1" in
+  up) up ;;
+  down) down ;;
+esac

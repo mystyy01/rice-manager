@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO_RAW_BASE="https://raw.githubusercontent.com/mystyy01/rice-manager/main"
+REPO_ARCHIVE_URL="https://github.com/mystyy01/rice-manager/archive/refs/heads/main.tar.gz"
 DEFAULT_BIN_DIR="$HOME/.local/bin"
 DEFAULT_RICE_ROOT="$HOME/.local/share/rices"
 
@@ -16,7 +17,7 @@ Flags:
   --yes                 Non-interactive (uses defaults)
   --bin-dir <path>      Install directory for the rice executable (default: $DEFAULT_BIN_DIR)
   --rice-root <path>    Rice storage root for optional imports (default: $DEFAULT_RICE_ROOT)
-  --import-mono-glass   Import local mono-glass rice if available
+  --import-mono-glass   Import mono-glass rice from the GitHub repo
 USAGE
   exit 0
 fi
@@ -79,7 +80,7 @@ ask_yes_no() {
 if [[ "$ASSUME_YES" -eq 0 ]]; then
   BIN_DIR="$(ask 'Install rice binary into directory' "$BIN_DIR")"
   RICE_ROOT="$(ask 'Rice storage root' "$RICE_ROOT")"
-  if ask_yes_no "Import local mono-glass rice if found?" "y"; then
+  if ask_yes_no "Install bundled mono-glass rice from GitHub?" "y"; then
     IMPORT_MONO_GLASS=1
   fi
 fi
@@ -116,21 +117,38 @@ case ":$PATH:" in
 esac
 
 if [[ "$IMPORT_MONO_GLASS" -eq 1 ]]; then
-  SRC="$HOME/.local/share/rices/mono-glass"
   DST="$RICE_ROOT/mono-glass"
-  if [[ -d "$SRC" ]]; then
-    echo "Importing mono-glass from $SRC"
-    rm -rf "$DST"
-    if command -v rsync >/dev/null 2>&1; then
-      mkdir -p "$DST"
-      rsync -a --delete "$SRC/" "$DST/"
+
+  if command -v tar >/dev/null 2>&1; then
+    echo "Downloading bundled mono-glass from: $REPO_ARCHIVE_URL"
+    if command -v curl >/dev/null 2>&1; then
+      curl -fsSL "$REPO_ARCHIVE_URL" -o "$TMPDIR/repo.tar.gz"
+    elif command -v wget >/dev/null 2>&1; then
+      wget -qO "$TMPDIR/repo.tar.gz" "$REPO_ARCHIVE_URL"
     else
-      mkdir -p "$DST"
-      cp -a "$SRC/." "$DST/"
+      echo "Need curl or wget to install mono-glass." >&2
+      exit 1
     fi
-    echo "Imported mono-glass -> $DST"
+
+    tar -xzf "$TMPDIR/repo.tar.gz" -C "$TMPDIR"
+    SRC_ARCHIVE_DIR="$(find "$TMPDIR" -maxdepth 6 -type d -path '*/rices/mono-glass' | head -n 1)"
+    if [[ -n "$SRC_ARCHIVE_DIR" && -d "$SRC_ARCHIVE_DIR" ]]; then
+      rm -rf "$DST"
+      mkdir -p "$DST"
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "$SRC_ARCHIVE_DIR/" "$DST/"
+      else
+        cp -a "$SRC_ARCHIVE_DIR/." "$DST/"
+      fi
+      echo "Installed mono-glass -> $DST"
+    else
+      echo "mono-glass not found in downloaded archive." >&2
+      echo "Please open an issue at: https://github.com/mystyy01/rice-manager/issues" >&2
+      exit 1
+    fi
   else
-    echo "Skipped mono-glass import (not found at $SRC)."
+    echo "Need tar to unpack mono-glass preset." >&2
+    exit 1
   fi
 fi
 

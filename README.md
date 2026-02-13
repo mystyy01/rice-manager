@@ -11,7 +11,7 @@ curl -fsSL https://raw.githubusercontent.com/mystyy01/rice-manager/main/install.
 Installer can prompt for:
 - install path for `rice` binary
 - rice storage root
-- optional import of local `mono-glass` into your rice list
+- optional install of bundled `mono-glass` from this GitHub repo
 
 ### Non-interactive install
 
