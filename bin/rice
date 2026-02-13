@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+RICE_ROOT="${RICE_ROOT:-$HOME/.local/share/rices}"
+TARGET_DIR="${RICE_TARGET:-$HOME/.config/hypr}"
+KITTY_TARGET_DIR="${RICE_KITTY_TARGET:-$HOME/.config/kitty}"
+WAYBAR_TARGET_DIR="${RICE_WAYBAR_TARGET:-$HOME/.config/waybar}"
+STATE_DIR="$RICE_ROOT/.state"
+CURRENT_FILE="$STATE_DIR/current"
+BACKUP_ROOT="${RICE_BACKUP_ROOT:-$HOME/.local/state/rice/backups}"
+
+usage() {
+  cat <<USAGE
+Usage:
+  rice <name>                 Switch to rice <name>
+  rice switch <name>          Switch to rice <name>
+  rice install <name> <path>  Install rice from a local hypr config directory
+  rice restore <timestamp>    Restore ~/.config/hypr from a backup
+  rice backups                List available backups
+  rice list                   List installed rices
+  rice current                Show active rice name
+  rice remove <name>          Remove installed rice
+  rice help                   Show this help
+
+Storage:
+  rices are stored in: $RICE_ROOT/<name>
+  optional dirs per rice:
+    kitty/   -> synced to $KITTY_TARGET_DIR
+    waybar/  -> synced to $WAYBAR_TARGET_DIR
+USAGE
+}
+
+die() {
+  echo "rice: $*" >&2
+  exit 1
+}
+
+ensure_dirs() {
+  mkdir -p "$RICE_ROOT" "$STATE_DIR" "$BACKUP_ROOT"
+}
+
+validate_name() {
+  local n="$1"
+  [[ -n "$n" ]] || die "name cannot be empty"
+  [[ "$n" =~ ^[a-zA-Z0-9._-]+$ ]] || die "invalid name '$n' (use letters, numbers, ., _, -)"
+}
+
+list_rices() {
+  ensure_dirs
+  local current=""
+  [[ -f "$CURRENT_FILE" ]] && current="$(<"$CURRENT_FILE")"
+
+  local found=0
+  shopt -s nullglob
+  for p in "$RICE_ROOT"/*; do
+    [[ -d "$p" ]] || continue
+    [[ "$(basename "$p")" == ".state" ]] && continue
+    found=1
+    local n
+    n="$(basename "$p")"
+    if [[ "$n" == "$current" ]]; then
+      echo "* $n"
+    else
+      echo "  $n"
+    fi
+  done
+  shopt -u nullglob
+
+  [[ "$found" -eq 1 ]] || echo "(no rices installed)"
+}
+
+install_rice() {
+  local name="$1"
+  local src="$2"
+
+  validate_name "$name"
+  ensure_dirs
+
+  [[ -d "$src" ]] || die "source path does not exist: $src"
+  [[ -f "$src/hyprland.conf" ]] || die "source path must contain hyprland.conf"
+
+  local dst="$RICE_ROOT/$name"
+  rm -rf "$dst"
+  mkdir -p "$dst"
+
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$src/" "$dst/"
+  else
+    cp -a "$src/." "$dst/"
+  fi
+
+  echo "Installed rice '$name' from $src"
+}
+
+backup_current() {
+  local ts
+  ts="$(date +%Y%m%d-%H%M%S)"
+  local backup_dir="$BACKUP_ROOT/$ts"
+  mkdir -p "$backup_dir"
+
+  if [[ -d "$TARGET_DIR" ]]; then
+    mkdir -p "$backup_dir/hypr"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "$TARGET_DIR/" "$backup_dir/hypr/"
+    else
+      cp -a "$TARGET_DIR/." "$backup_dir/hypr/"
+    fi
+  fi
+
+  if [[ -d "$KITTY_TARGET_DIR" ]]; then
+    mkdir -p "$backup_dir/kitty"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "$KITTY_TARGET_DIR/" "$backup_dir/kitty/"
+    else
+      cp -a "$KITTY_TARGET_DIR/." "$backup_dir/kitty/"
+    fi
+  fi
+
+  if [[ -d "$WAYBAR_TARGET_DIR" ]]; then
+    mkdir -p "$backup_dir/waybar"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a "$WAYBAR_TARGET_DIR/" "$backup_dir/waybar/"
+    else
+      cp -a "$WAYBAR_TARGET_DIR/." "$backup_dir/waybar/"
+    fi
+  fi
+}
+
+reload_hypr() {
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl reload >/dev/null 2>&1 || true
+  fi
+}
+
+launch_in_session() {
+  local cmd="$1"
+  if command -v hyprctl >/dev/null 2>&1; then
+    hyprctl dispatch exec "$cmd" >/dev/null 2>&1 || nohup bash -lc "$cmd" >/dev/null 2>&1 &
+  else
+    nohup bash -lc "$cmd" >/dev/null 2>&1 &
+  fi
+}
+
+restart_waybar() {
+  if command -v waybar >/dev/null 2>&1; then
+    pkill -x waybar >/dev/null 2>&1 || true
+    launch_in_session "waybar"
+  fi
+}
+
+restart_wallpaper_daemon() {
+  local cfg="$TARGET_DIR/hyprland.conf"
+  [[ -f "$cfg" ]] || return 0
+
+  # Always stop old wallpaper daemons before starting the new rice's one.
+  pkill -x swaybg >/dev/null 2>&1 || true
+  pkill -x hyprpaper >/dev/null 2>&1 || true
+
+  if grep -Eq '^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*swaybg[[:space:]]' "$cfg" && command -v swaybg >/dev/null 2>&1; then
+    local line cmd
+    line="$(grep -Em1 '^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*swaybg[[:space:]]' "$cfg" || true)"
+    cmd="$(echo "$line" | sed -E 's/^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*//')"
+    if [[ -n "$cmd" ]]; then
+      launch_in_session "$cmd"
+      return 0
+    fi
+  fi
+
+  if grep -Eq '^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*hyprpaper([[:space:]]|$)' "$cfg" && command -v hyprpaper >/dev/null 2>&1; then
+    launch_in_session "hyprpaper"
+  fi
+}
+
+restart_nwg_dock() {
+  local cfg="$TARGET_DIR/hyprland.conf"
+  [[ -f "$cfg" ]] || return 0
+
+  pkill -f 'nwg-dock-hyprland' >/dev/null 2>&1 || true
+
+  if grep -Eq '^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*nwg-dock-hyprland([[:space:]]|$)' "$cfg"; then
+    local line cmd
+    line="$(grep -Em1 '^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*nwg-dock-hyprland([[:space:]]|$)' "$cfg" || true)"
+    cmd="$(echo "$line" | sed -E 's/^[[:space:]]*exec-once[[:space:]]*=[[:space:]]*//')"
+    if [[ -n "$cmd" ]]; then
+      launch_in_session "$cmd"
+    fi
+  fi
+}
+
+post_apply_refresh() {
+  reload_hypr
+  restart_waybar
+  restart_wallpaper_daemon
+  restart_nwg_dock
+}
+
+switch_rice() {
+  local name="$1"
+  validate_name "$name"
+  ensure_dirs
+
+  local src="$RICE_ROOT/$name"
+  [[ -d "$src" ]] || die "rice '$name' is not installed (run: rice install $name <path>)"
+  local hypr_src="$src"
+  if [[ -d "$src/hypr" ]]; then
+    hypr_src="$src/hypr"
+  fi
+  [[ -f "$hypr_src/hyprland.conf" ]] || die "rice '$name' is missing hyprland.conf"
+
+  backup_current
+
+  mkdir -p "$TARGET_DIR"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$hypr_src/" "$TARGET_DIR/"
+  else
+    rm -rf "$TARGET_DIR"
+    mkdir -p "$TARGET_DIR"
+    cp -a "$hypr_src/." "$TARGET_DIR/"
+  fi
+
+  if [[ -d "$src/kitty" ]]; then
+    mkdir -p "$KITTY_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/kitty/" "$KITTY_TARGET_DIR/"
+    else
+      rm -rf "$KITTY_TARGET_DIR"
+      mkdir -p "$KITTY_TARGET_DIR"
+      cp -a "$src/kitty/." "$KITTY_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -d "$src/waybar" ]]; then
+    mkdir -p "$WAYBAR_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/waybar/" "$WAYBAR_TARGET_DIR/"
+    else
+      rm -rf "$WAYBAR_TARGET_DIR"
+      mkdir -p "$WAYBAR_TARGET_DIR"
+      cp -a "$src/waybar/." "$WAYBAR_TARGET_DIR/"
+    fi
+  fi
+
+  echo "$name" > "$CURRENT_FILE"
+  post_apply_refresh
+  echo "Switched to rice '$name'"
+}
+
+remove_rice() {
+  local name="$1"
+  validate_name "$name"
+  ensure_dirs
+
+  local dst="$RICE_ROOT/$name"
+  [[ -d "$dst" ]] || die "rice '$name' is not installed"
+  rm -rf "$dst"
+
+  if [[ -f "$CURRENT_FILE" ]] && [[ "$(<"$CURRENT_FILE")" == "$name" ]]; then
+    rm -f "$CURRENT_FILE"
+  fi
+
+  echo "Removed rice '$name'"
+}
+
+list_backups() {
+  ensure_dirs
+
+  local found=0
+  shopt -s nullglob
+  for p in "$BACKUP_ROOT"/*; do
+    [[ -d "$p" ]] || continue
+    found=1
+    echo "$(basename "$p")"
+  done
+  shopt -u nullglob
+
+  [[ "$found" -eq 1 ]] || echo "(no backups found)"
+}
+
+restore_backup() {
+  local ts="$1"
+  [[ -n "$ts" ]] || die "usage: rice restore <timestamp>"
+
+  local src="$BACKUP_ROOT/$ts"
+  [[ -d "$src" ]] || die "backup not found: $ts"
+  local hypr_src="$src"
+  if [[ -d "$src/hypr" ]]; then
+    hypr_src="$src/hypr"
+  fi
+  [[ -f "$hypr_src/hyprland.conf" ]] || die "backup '$ts' is missing hyprland.conf"
+
+  # Protect current state before restoring older config.
+  backup_current
+
+  mkdir -p "$TARGET_DIR"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$hypr_src/" "$TARGET_DIR/"
+  else
+    rm -rf "$TARGET_DIR"
+    mkdir -p "$TARGET_DIR"
+    cp -a "$hypr_src/." "$TARGET_DIR/"
+  fi
+
+  if [[ -d "$src/kitty" ]]; then
+    mkdir -p "$KITTY_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/kitty/" "$KITTY_TARGET_DIR/"
+    else
+      rm -rf "$KITTY_TARGET_DIR"
+      mkdir -p "$KITTY_TARGET_DIR"
+      cp -a "$src/kitty/." "$KITTY_TARGET_DIR/"
+    fi
+  fi
+
+  if [[ -d "$src/waybar" ]]; then
+    mkdir -p "$WAYBAR_TARGET_DIR"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$src/waybar/" "$WAYBAR_TARGET_DIR/"
+    else
+      rm -rf "$WAYBAR_TARGET_DIR"
+      mkdir -p "$WAYBAR_TARGET_DIR"
+      cp -a "$src/waybar/." "$WAYBAR_TARGET_DIR/"
+    fi
+  fi
+
+  post_apply_refresh
+  echo "Restored backup '$ts'"
+}
+
+current_rice() {
+  if [[ -f "$CURRENT_FILE" ]]; then
+    cat "$CURRENT_FILE"
+  else
+    echo "(none)"
+  fi
+}
+
+main() {
+  local cmd="${1:-help}"
+
+  case "$cmd" in
+    help|-h|--help)
+      usage
+      ;;
+    list)
+      list_rices
+      ;;
+    backups)
+      list_backups
+      ;;
+    current)
+      current_rice
+      ;;
+    install)
+      [[ $# -eq 3 ]] || die "usage: rice install <name> <path>"
+      install_rice "$2" "$3"
+      ;;
+    switch)
+      [[ $# -eq 2 ]] || die "usage: rice switch <name>"
+      switch_rice "$2"
+      ;;
+    remove)
+      [[ $# -eq 2 ]] || die "usage: rice remove <name>"
+      remove_rice "$2"
+      ;;
+    restore)
+      [[ $# -eq 2 ]] || die "usage: rice restore <timestamp>"
+      restore_backup "$2"
+      ;;
+    *)
+      [[ $# -eq 1 ]] || die "unknown command: $cmd"
+      switch_rice "$cmd"
+      ;;
+  esac
+}
+
+main "$@"
