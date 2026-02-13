@@ -131,7 +131,7 @@ if [[ "$IMPORT_MONO_GLASS" -eq 1 ]]; then
     fi
 
     tar -xzf "$TMPDIR/repo.tar.gz" -C "$TMPDIR"
-    SRC_ARCHIVE_DIR="$(find "$TMPDIR" -maxdepth 6 -type d -path '*/rices/mono-glass' | head -n 1)"
+    SRC_ARCHIVE_DIR="$(find "$TMPDIR" -type d -path '*/rices/mono-glass' | head -n 1)"
     if [[ -n "$SRC_ARCHIVE_DIR" && -d "$SRC_ARCHIVE_DIR" ]]; then
       rm -rf "$DST"
       mkdir -p "$DST"
